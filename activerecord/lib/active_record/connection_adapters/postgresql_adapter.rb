@@ -410,7 +410,9 @@ module ActiveRecord
       end
 
       def set_standard_conforming_strings
-        internal_execute("SET standard_conforming_strings = on", "SCHEMA")
+        ensure_parameter(name: "standard_conforming_strings", expected: "on") do |value|
+          internal_execute("SET standard_conforming_strings = #{value}", "SCHEMA")
+        end
       end
 
       def supports_ddl_transactions?
@@ -624,7 +626,7 @@ module ActiveRecord
       # Set the authorized user for this session
       def session_auth=(user)
         clear_cache!
-        internal_execute("SET SESSION AUTHORIZATION #{user}", nil, materialize_transactions: true)
+        internal_execute("SET SESSION AUTHORIZATION #{user}", nil, materialize_transactions: true) # TODO
       end
 
       def use_insert_returning?
@@ -957,10 +959,16 @@ module ActiveRecord
           super
 
           if @config[:encoding]
-            @raw_connection.set_client_encoding(@config[:encoding])
+            ensure_parameter(name: "client_encoding", expected: @config[:encoding]) do |value|
+              @raw_connection.set_client_encoding(value)
+            end
           end
-          self.client_min_messages = @config[:min_messages] || "warning"
-          self.schema_search_path = @config[:schema_search_path] || @config[:schema_order]
+          ensure_parameter(name: "client_min_messages", expected: @config[:min_messages] || "warning") do |value|
+            self.client_min_messages = value
+          end
+          ensure_parameter(name: "search_path", expected: @config[:schema_search_path] || @config[:schema_order]) do |value|
+            self.schema_search_path = value
+          end
 
           unless ActiveRecord.db_warnings_action.nil?
             @raw_connection.set_notice_receiver do |result|
@@ -977,16 +985,18 @@ module ActiveRecord
           variables = @config.fetch(:variables, {}).stringify_keys
 
           # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
-          internal_execute("SET intervalstyle = iso_8601", "SCHEMA")
+          ensure_parameter(name: "intervalstyle", expected: "iso_8601") do |value|
+            internal_execute("SET intervalstyle = #{value}", "SCHEMA")
+          end
 
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
           variables.map do |k, v|
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA")
+              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") #
             elsif !v.nil?
-              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA")
+              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") #
             end
           end
 
@@ -1007,9 +1017,28 @@ module ActiveRecord
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
-            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA")
+            ensure_parameter(name: "TimeZone", expected: "Etc/UTC") do
+              raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA")
+            end
           else
             raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA")
+          end
+        end
+
+        def ensure_parameter(name:, expected:)
+          @pg_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
+            SELECT name, setting FROM pg_settings WHERE name IN (
+              'client_encoding',
+              'client_min_messages',
+              'search_path',
+              'standard_conforming_strings',
+              'intervalstyle',
+              'TimeZone'
+            )
+          SQL
+
+          if @pg_settings[name] != expected
+            yield expected
           end
         end
 
