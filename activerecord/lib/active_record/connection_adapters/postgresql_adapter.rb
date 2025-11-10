@@ -958,11 +958,7 @@ module ActiveRecord
         def configure_connection
           super
 
-          if @config[:encoding]
-            ensure_parameter(name: "client_encoding", expected: @config[:encoding]) do |value|
-              @raw_connection.set_client_encoding(value)
-            end
-          end
+          set_client_encoding
           ensure_parameter(name: "client_min_messages", expected: @config[:min_messages] || "warning") do |value|
             self.client_min_messages = value
           end
@@ -985,7 +981,7 @@ module ActiveRecord
           variables = @config.fetch(:variables, {}).stringify_keys
 
           # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
-          ensure_parameter(name: "intervalstyle", expected: "iso_8601") do |value|
+          ensure_parameter(name: "IntervalStyle", expected: "iso_8601") do |value|
             internal_execute("SET intervalstyle = #{value}", "SCHEMA")
           end
 
@@ -1017,7 +1013,7 @@ module ActiveRecord
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
-            ensure_parameter(name: "TimeZone", expected: "Etc/UTC") do
+            ensure_parameter(name: "TimeZone", expected: "UTC") do
               raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA")
             end
           else
@@ -1025,21 +1021,37 @@ module ActiveRecord
           end
         end
 
+        def set_client_encoding
+          return unless @config[:encoding]
+
+          normalized_encoding = @config[:encoding].upcase
+
+          # For simplicity, handle only the common 'unicode' alias.
+          # See https://www.postgresql.org/docs/current/multibyte.html#CHARSET-TABLE
+          normalized_encoding = 'UTF8' if normalized_encoding == 'UNICODE'
+
+          # PostgreSQL accepts loose input forms like 'utf@8'. We assume
+          # canonical form for simplicity.
+          # See https://github.com/postgres/postgres/blob/master/src/common/encnames.c
+          if @raw_connection.get_client_encoding != normalized_encoding
+            @raw_connection.set_client_encoding(normalized_encoding)
+          end
+        end
+
         def ensure_parameter(name:, expected:)
+          yield expected if pg_settings[name] != expected
+        end
+
+        def pg_settings
           @pg_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
             SELECT name, setting FROM pg_settings WHERE name IN (
               'client_encoding',
               'client_min_messages',
               'search_path',
               'standard_conforming_strings',
-              'intervalstyle',
-              'TimeZone'
+              'IntervalStyle'
             )
           SQL
-
-          if @pg_settings[name] != expected
-            yield expected
-          end
         end
 
         # Returns the list of a table's column names, data types, and default values.
