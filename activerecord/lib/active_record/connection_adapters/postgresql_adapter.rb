@@ -1010,12 +1010,15 @@ module ActiveRecord
           # and then never changed.
           return if variables["timezone"]
 
+          set_timezone
+        end
+
+        def set_timezone
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
-            ensure_parameter(name: "TimeZone", expected: "UTC") do
-              raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA")
-            end
+            # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
+            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless pg_settings["TimeZone"].in?(["UTC", "Etc/UTC"])
           else
             raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA")
           end
@@ -1049,7 +1052,8 @@ module ActiveRecord
               'client_min_messages',
               'search_path',
               'standard_conforming_strings',
-              'IntervalStyle'
+              'IntervalStyle',
+              'TimeZone'
             )
           SQL
         end
