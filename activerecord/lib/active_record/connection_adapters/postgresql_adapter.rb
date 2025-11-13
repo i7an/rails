@@ -1014,13 +1014,15 @@ module ActiveRecord
         end
 
         def set_timezone
+          session_timezone = pg_settings["TimeZone"]
+
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
             # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
-            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless pg_settings["TimeZone"].in?(["UTC", "Etc/UTC"])
+            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless session_timezone.in?(["UTC", "Etc/UTC"])
           else
-            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if pg_settings["TimeZone"] != pg_file_settings['timezone']
+            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if session_timezone != pg_file_settings["timezone"]
           end
         end
 
@@ -1031,7 +1033,7 @@ module ActiveRecord
 
           # For simplicity, handle only the common 'unicode' alias.
           # See https://www.postgresql.org/docs/current/multibyte.html#CHARSET-TABLE
-          normalized_encoding = 'UTF8' if normalized_encoding == 'UNICODE'
+          normalized_encoding = "UTF8" if normalized_encoding == "UNICODE"
 
           # PostgreSQL accepts loose input forms like 'utf@8'. We assume
           # canonical form for simplicity.
