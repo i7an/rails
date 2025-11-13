@@ -1020,7 +1020,7 @@ module ActiveRecord
             # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
             raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless pg_settings["TimeZone"].in?(["UTC", "Etc/UTC"])
           else
-            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA")
+            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if pg_settings["TimeZone"] != pg_file_settings['timezone']
           end
         end
 
@@ -1054,6 +1054,14 @@ module ActiveRecord
               'standard_conforming_strings',
               'IntervalStyle',
               'TimeZone'
+            )
+          SQL
+        end
+
+        def pg_file_settings
+          @pg_file_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
+            SELECT name, setting FROM pg_file_settings WHERE name IN (
+              'timezone'
             )
           SQL
         end
