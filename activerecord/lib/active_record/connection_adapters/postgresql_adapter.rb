@@ -1061,6 +1061,8 @@ module ActiveRecord
         end
 
         def pg_file_settings
+          return {} if database_version < 9_05_00 # < 9.5
+
           @pg_file_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
             SELECT name, setting FROM pg_file_settings WHERE name IN (
               'timezone'
