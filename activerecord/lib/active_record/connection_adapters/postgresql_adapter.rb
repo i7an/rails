@@ -978,12 +978,10 @@ module ActiveRecord
           # Use standard-conforming strings so we don't have to do the E'...' dance.
           set_standard_conforming_strings
 
-          variables = @config.fetch(:variables, {}).stringify_keys
-
           # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
-          ensure_parameter(name: "IntervalStyle", expected: "iso_8601") do |value|
-            internal_execute("SET intervalstyle = #{value}", "SCHEMA")
-          end
+          set_interval_style
+
+          variables = @config.fetch(:variables, {}).stringify_keys
 
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
@@ -1040,6 +1038,12 @@ module ActiveRecord
           # See https://github.com/postgres/postgres/blob/master/src/common/encnames.c
           if @raw_connection.get_client_encoding != normalized_encoding
             @raw_connection.set_client_encoding(normalized_encoding)
+          end
+        end
+
+        def set_interval_style
+          ensure_parameter(name: "IntervalStyle", expected: "iso_8601") do |value|
+            internal_execute("SET intervalstyle = #{value}", "SCHEMA")
           end
         end
 
