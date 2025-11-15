@@ -990,7 +990,7 @@ module ActiveRecord
               # Sets the value to the global or compile default
               internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") #
             elsif !v.nil?
-              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") #
+              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if pg_settings[k.downcase] != v
             end
           end
 
@@ -1012,7 +1012,7 @@ module ActiveRecord
         end
 
         def set_timezone
-          session_timezone = pg_settings["TimeZone"]
+          session_timezone = pg_settings["timezone"]
 
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
@@ -1042,7 +1042,7 @@ module ActiveRecord
         end
 
         def set_interval_style
-          ensure_parameter(name: "IntervalStyle", expected: "iso_8601") do |value|
+          ensure_parameter(name: "intervalstyle", expected: "iso_8601") do |value|
             internal_execute("SET intervalstyle = #{value}", "SCHEMA")
           end
         end
@@ -1052,16 +1052,19 @@ module ActiveRecord
         end
 
         def pg_settings
-          @pg_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
-            SELECT name, setting FROM pg_settings WHERE name IN (
-              'client_encoding',
-              'client_min_messages',
-              'search_path',
-              'standard_conforming_strings',
-              'IntervalStyle',
-              'TimeZone'
-            )
-          SQL
+          @pg_settings ||= begin
+            variables = @config.fetch(:variables, {}).compact.keys.map { |k| k.to_s.downcase } + %w[
+              client_encoding
+              client_min_messages
+              search_path
+              standard_conforming_strings
+              intervalstyle
+              timezone
+            ]
+            internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"].downcase, row["setting"]] }
+              SELECT name, setting FROM pg_settings WHERE LOWER(name) in (#{variables.map { |v| quote(v) }.join(", ")})
+            SQL
+          end
         end
 
         def pg_file_settings
