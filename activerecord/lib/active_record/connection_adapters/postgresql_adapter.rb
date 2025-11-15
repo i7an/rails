@@ -986,11 +986,12 @@ module ActiveRecord
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
           variables.map do |k, v|
+            param = k.downcase
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") #
+              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") if pg_settings[param] != pg_file_settings[param]
             elsif !v.nil?
-              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if pg_settings[k.downcase] != v
+              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if pg_settings[param] != v
             end
           end
 
@@ -1070,11 +1071,14 @@ module ActiveRecord
         def pg_file_settings
           return {} if database_version < 9_05_00 # < 9.5
 
-          @pg_file_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"], row["setting"]] }
-            SELECT name, setting FROM pg_file_settings WHERE name IN (
-              'timezone'
-            )
-          SQL
+          @pg_file_settings ||= begin
+            variables = @config.fetch(:variables, {}).compact.keys.map { |k| k.to_s.downcase } + %w[
+              timezone
+            ]
+            internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"].downcase, row["setting"]] }
+              SELECT name, setting FROM pg_file_settings WHERE LOWER(name) in (#{variables.map { |v| quote(v) }.join(", ")})
+            SQL
+          end
         end
 
         # Returns the list of a table's column names, data types, and default values.
