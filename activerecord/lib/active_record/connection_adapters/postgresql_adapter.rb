@@ -986,12 +986,13 @@ module ActiveRecord
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
           variables.map do |k, v|
+            setting = pg_setting(k)
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA")
+              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") if setting[:setting] != setting[:reset_val]
             elsif !v.nil?
               normalized_value = v
-              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if pg_settings[k.downcase] != normalized_value
+              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if setting[:setting] != normalized_value
             end
           end
 
@@ -1013,15 +1014,15 @@ module ActiveRecord
         end
 
         def set_timezone
-          session_timezone = pg_settings["timezone"]
+          timezone_setting = pg_setting("timezone")
 
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
             # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
-            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless session_timezone.in?(["UTC", "Etc/UTC"])
+            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless timezone_setting[:setting].in?(["UTC", "Etc/UTC"])
           else
-            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if session_timezone != pg_file_settings["timezone"]
+            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if timezone_setting[:setting] != timezone_setting[:reset_val]
           end
         end
 
@@ -1049,12 +1050,12 @@ module ActiveRecord
         end
 
         def ensure_parameter(name:, expected:)
-          yield expected if pg_settings[name] != expected
+          yield expected if pg_setting(name)[:setting] != expected
         end
 
-        def pg_settings
+        def pg_setting(name)
           @pg_settings ||= begin
-            variables = @config.fetch(:variables, {}).compact.keys.map { |k| k.to_s.downcase } + %w[
+            param_names = @config.fetch(:variables, {}).compact.keys.map { |k| k.to_s.downcase } + %w[
               client_encoding
               client_min_messages
               search_path
@@ -1062,18 +1063,23 @@ module ActiveRecord
               intervalstyle
               timezone
             ]
-            internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"].downcase, row["setting"]] }
-              SELECT name, setting FROM pg_settings WHERE LOWER(name) in (#{variables.map { |v| quote(v) }.join(", ")})
+            # bool, string, enum, bool, real
+            rows = internal_execute(<<~SQL, "SCHEMA")
+              SELECT name, setting, vartype, reset_val
+                FROM pg_settings
+              WHERE LOWER(name) in (#{param_names.map { |v| quote(v) }.join(", ")})
             SQL
+
+            rows.map do |row|
+              {
+                name: row["name"],
+                setting: row["setting"],
+                reset_val: row["reset_val"],
+                vartype: row["vartype"]
+              }
+            end
           end
-        end
-
-        def pg_file_settings
-          return {} if database_version < 9_05_00 # < 9.5
-
-          @pg_file_settings ||= internal_execute(<<~SQL, "SCHEMA").to_h { |row| [row["name"].downcase, row["setting"]] }
-            SELECT name, setting FROM pg_file_settings WHERE LOWER(name) in ('timezone')
-          SQL
+          @pg_settings.find { |setting| setting[:name].downcase == name.to_s.downcase }
         end
 
         # Returns the list of a table's column names, data types, and default values.
