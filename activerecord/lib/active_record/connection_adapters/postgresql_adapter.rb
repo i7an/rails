@@ -981,14 +981,13 @@ module ActiveRecord
           # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
           ensure_parameter("intervalstyle", "iso_8601")
 
-          variables = @config.fetch(:variables, {}).stringify_keys
-
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
+          variables = @config.fetch(:variables, {}).stringify_keys
           variables.map do |k, v|
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              ensure_parameter(k, :default)
+              set_parameter(k, :default)
             elsif !v.nil?
               ensure_parameter(k, v)
             end
@@ -1012,10 +1011,11 @@ module ActiveRecord
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
             # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
-            is_utc = parameter_set_to?("timezone", "UTC") || parameter_set_to?("timezone", "Etc/UTC")
+            is_utc = parameter_set_to?("timezone", "UTC") ||
+              parameter_set_to?("timezone", "Etc/UTC")
             set_parameter("timezone", "UTC") unless is_utc
           else
-            ensure_parameter("timezone", :default)
+            set_parameter("timezone", :default)
           end
         end
 

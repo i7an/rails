@@ -19,21 +19,17 @@ module ActiveRecord
           def parameter_set_to?(name, value)
             validate_parameter!(name)
 
-            if value == :default
-              false # simplification
+            normalized_value = case value
+            when TrueClass
+              "on"
+            when FalseClass
+              "off"
             else
-              normalized_value = case value
-              when TrueClass
-                "on"
-              when FalseClass
-                "off"
-              else
-                value.to_s
-              end
-              current_value = internal_execute("SHOW #{name}", "SCHEMA").getvalue(0, 0)
-
-              normalized_value == current_value
+              value.to_s
             end
+            current_value = internal_execute("SHOW #{name}", "SCHEMA").getvalue(0, 0)
+
+            normalized_value == current_value
           end
 
           def set_parameter(name, value)
