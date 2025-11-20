@@ -28,11 +28,12 @@ module ActiveRecord
           end
 
           def set_parameter(name, value)
+            raise ArgumentError, "Parameter name '#{name}' is invalid" unless name.match?(/\A[a-zA-Z0-9_.]+\z/)
+
             if value == :default
               internal_execute("SET SESSION #{name} TO DEFAULT", "SCHEMA")
             else
-              # normalize name
-              internal_execute("SET SESSION #{name} = #{quote(value)}", "SCHEMA")
+              internal_execute("SET SESSION #{name} TO #{quote(value)}", "SCHEMA")
             end
           end
 
