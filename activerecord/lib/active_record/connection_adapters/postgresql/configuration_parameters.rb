@@ -10,14 +10,11 @@ module ActiveRecord
             parameter = find_parameter(name)
             return false unless parameter
 
-            parameter[:setting] == value
-          end
-
-          def parameter_set_to_default?(name)
-            parameter = find_parameter(name)
-            return false unless parameter
-
-            parameter[:setting] == parameter[:reset_val]
+            if value == :default
+              parameter[:setting] == parameter[:reset_val]
+            else
+              parameter[:setting] == value
+            end
           end
 
           def find_parameter(name)
@@ -27,8 +24,12 @@ module ActiveRecord
           end
 
           def set_parameter(name, value)
-            # normalize name
-            internal_execute("SET SESSION #{name} = #{quote(value)}", "SCHEMA")
+            if value == :default
+              internal_execute("SET SESSION #{name} TO DEFAULT", "SCHEMA")
+            else
+              # normalize name
+              internal_execute("SET SESSION #{name} = #{quote(value)}", "SCHEMA")
+            end
           end
 
           def ensure_parameter(name, value)
