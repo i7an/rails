@@ -958,8 +958,6 @@ module ActiveRecord
         def configure_connection
           super
 
-          load_parameters
-
           set_client_encoding
           ensure_parameter("client_min_messages", @config[:min_messages] || "warning") do |value|
             self.client_min_messages = value
@@ -1000,8 +998,6 @@ module ActiveRecord
           add_pg_decoders
 
           reload_type_map
-        ensure
-          reset_parameters
         end
 
         def reconfigure_connection_timezone

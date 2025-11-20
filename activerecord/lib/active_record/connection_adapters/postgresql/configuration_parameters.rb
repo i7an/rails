@@ -17,18 +17,19 @@ module ActiveRecord
           end
 
           def parameter_set_to?(name, value)
-            parameter = find_parameter(name)
-            return false unless parameter
+            validate_parameter!(name)
 
             if value == :default
-              parameter[:setting] == parameter[:reset_val]
+              false # simplification
             else
-              parameter[:setting] == value
+              current_value = internal_execute("SHOW #{name}", "SCHEMA").getvalue(0, 0)
+              # TODO: normalize depending on the type
+              value == current_value
             end
           end
 
           def set_parameter(name, value)
-            raise ArgumentError, "Parameter name '#{name}' is invalid" unless name.match?(/\A[a-zA-Z0-9_.]+\z/)
+            validate_parameter!(name)
 
             if value == :default
               internal_execute("SET SESSION #{name} TO DEFAULT", "SCHEMA")
@@ -37,29 +38,8 @@ module ActiveRecord
             end
           end
 
-          def find_parameter(name)
-            return nil unless @pg_settings
-
-            @pg_settings&.find { |parameter| parameter[:name].downcase == name.downcase }
-          end
-
-          def load_parameters
-            rows = internal_execute(<<~SQL, "SCHEMA")
-              SELECT name, setting, vartype, reset_val FROM pg_settings
-            SQL
-
-            @pg_settings = rows.map do |row|
-              {
-                name: row["name"],
-                setting: row["setting"],
-                reset_val: row["reset_val"],
-                vartype: row["vartype"]
-              }
-            end
-          end
-
-          def reset_parameters
-            @pg_settings = nil
+          def validate_parameter!(name)
+            raise ArgumentError, "Parameter name '#{name}' is invalid" unless name.match?(/\A[a-zA-Z0-9_.]+\z/)
           end
       end
     end
