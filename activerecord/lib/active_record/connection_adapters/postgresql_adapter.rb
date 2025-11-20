@@ -990,9 +990,9 @@ module ActiveRecord
           variables.map do |k, v|
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              set_parameter(k, :default) unless parameter_set_to?(k, :default)
+              ensure_parameter(k, :default)
             elsif !v.nil?
-              set_parameter(k, v) unless parameter_set_to?(k, v)
+              ensure_parameter(k, v)
             end
           end
 
@@ -1023,7 +1023,7 @@ module ActiveRecord
             is_utc = parameter_set_to?("timezone", "UTC") || parameter_set_to?("timezone", "Etc/UTC")
             set_parameter("timezone", "UTC") unless is_utc
           else
-            set_parameter("timezone", :default) unless parameter_set_to?("timezone", :default)
+            ensure_parameter("timezone", :default)
           end
         end
 
