@@ -7,6 +7,7 @@ require "active_support/core_ext/object/try"
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/statement_pool"
 require "active_record/connection_adapters/postgresql/column"
+require "active_record/connection_adapters/postgresql/configuration_parameters"
 require "active_record/connection_adapters/postgresql/database_statements"
 require "active_record/connection_adapters/postgresql/explain_pretty_printer"
 require "active_record/connection_adapters/postgresql/oid"
@@ -184,6 +185,7 @@ module ActiveRecord
       include PostgreSQL::ReferentialIntegrity
       include PostgreSQL::SchemaStatements
       include PostgreSQL::DatabaseStatements
+      include PostgreSQL::ConfigurationParameters
 
       def supports_bulk_alter?
         true
@@ -410,9 +412,7 @@ module ActiveRecord
       end
 
       def set_standard_conforming_strings
-        ensure_parameter(name: "standard_conforming_strings", expected: "on") do |value|
-          internal_execute("SET standard_conforming_strings = #{value}", "SCHEMA")
-        end
+        ensure_parameter("standard_conforming_strings", "on")
       end
 
       def supports_ddl_transactions?
@@ -958,11 +958,13 @@ module ActiveRecord
         def configure_connection
           super
 
+          load_parameters
+
           set_client_encoding
-          ensure_parameter(name: "client_min_messages", expected: @config[:min_messages] || "warning") do |value|
+          ensure_parameter("client_min_messages", @config[:min_messages] || "warning") do |value|
             self.client_min_messages = value
           end
-          ensure_parameter(name: "search_path", expected: @config[:schema_search_path] || @config[:schema_order]) do |value|
+          ensure_parameter("search_path", @config[:schema_search_path] || @config[:schema_order]) do |value|
             self.schema_search_path = value
           end
 
@@ -986,13 +988,11 @@ module ActiveRecord
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
           variables.map do |k, v|
-            setting = pg_setting(k)
             if v == ":default" || v == :default
               # Sets the value to the global or compile default
-              internal_execute("SET SESSION #{k} TO DEFAULT", "SCHEMA") if setting[:setting] != setting[:reset_val]
+              set_parameter(k, "DEFAULT") unless parameter_set_to_default?(k)
             elsif !v.nil?
-              normalized_value = v
-              internal_execute("SET SESSION #{k} TO #{quote(v)}", "SCHEMA") if setting[:setting] != normalized_value
+              set_parameter(k, v) unless parameter_set_to?(k, v)
             end
           end
 
@@ -1000,6 +1000,8 @@ module ActiveRecord
           add_pg_decoders
 
           reload_type_map
+        ensure
+          reset_parameters
         end
 
         def reconfigure_connection_timezone
@@ -1014,15 +1016,14 @@ module ActiveRecord
         end
 
         def set_timezone
-          timezone_setting = pg_setting("timezone")
-
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
             # For simplicity, ignore UTC aliases (e.g., UCT, Zulu, GMT, GMT0, ...).
-            raw_execute("SET SESSION timezone TO 'UTC'", "SCHEMA") unless timezone_setting[:setting].in?(["UTC", "Etc/UTC"])
+            is_utc = parameter_set_to?("timezone", "UTC") || parameter_set_to?("timezone", "Etc/UTC")
+            set_parameter("timezone", "UTC") unless is_utc
           else
-            raw_execute("SET SESSION timezone TO DEFAULT", "SCHEMA") if timezone_setting[:setting] != timezone_setting[:reset_val]
+            set_parameter("timezone", "DEFAULT") unless parameter_set_to_default?("timezone")
           end
         end
 
@@ -1038,48 +1039,13 @@ module ActiveRecord
           # PostgreSQL accepts loose input forms like 'utf@8'. We assume
           # canonical form for simplicity.
           # See https://github.com/postgres/postgres/blob/master/src/common/encnames.c
-          if @raw_connection.get_client_encoding != normalized_encoding
+          ensure_parameter("client_encoding", normalized_encoding) do
             @raw_connection.set_client_encoding(normalized_encoding)
           end
         end
 
         def set_interval_style
-          ensure_parameter(name: "intervalstyle", expected: "iso_8601") do |value|
-            internal_execute("SET intervalstyle = #{value}", "SCHEMA")
-          end
-        end
-
-        def ensure_parameter(name:, expected:)
-          yield expected if pg_setting(name)[:setting] != expected
-        end
-
-        def pg_setting(name)
-          @pg_settings ||= begin
-            param_names = @config.fetch(:variables, {}).compact.keys.map { |k| k.to_s.downcase } + %w[
-              client_encoding
-              client_min_messages
-              search_path
-              standard_conforming_strings
-              intervalstyle
-              timezone
-            ]
-            # bool, string, enum, bool, real
-            rows = internal_execute(<<~SQL, "SCHEMA")
-              SELECT name, setting, vartype, reset_val
-                FROM pg_settings
-              WHERE LOWER(name) in (#{param_names.map { |v| quote(v) }.join(", ")})
-            SQL
-
-            rows.map do |row|
-              {
-                name: row["name"],
-                setting: row["setting"],
-                reset_val: row["reset_val"],
-                vartype: row["vartype"]
-              }
-            end
-          end
-          @pg_settings.find { |setting| setting[:name].downcase == name.to_s.downcase }
+          ensure_parameter("intervalstyle", "iso_8601")
         end
 
         # Returns the list of a table's column names, data types, and default values.
