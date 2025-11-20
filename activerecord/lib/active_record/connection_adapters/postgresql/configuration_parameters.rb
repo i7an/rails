@@ -6,6 +6,16 @@ module ActiveRecord
       # quote and internal_execute must be implemented
       module ConfigurationParameters
         private
+          def ensure_parameter(name, value)
+            return if parameter_set_to?(name, value)
+
+            if block_given?
+              yield value
+            else
+              set_parameter(name, value)
+            end
+          end
+
           def parameter_set_to?(name, value)
             parameter = find_parameter(name)
             return false unless parameter
@@ -17,12 +27,6 @@ module ActiveRecord
             end
           end
 
-          def find_parameter(name)
-            return nil unless @pg_settings
-
-            @pg_settings&.find { |parameter| parameter[:name].downcase == name.downcase }
-          end
-
           def set_parameter(name, value)
             if value == :default
               internal_execute("SET SESSION #{name} TO DEFAULT", "SCHEMA")
@@ -32,14 +36,10 @@ module ActiveRecord
             end
           end
 
-          def ensure_parameter(name, value)
-            return if parameter_set_to?(name, value)
+          def find_parameter(name)
+            return nil unless @pg_settings
 
-            if block_given?
-              yield value
-            else
-              set_parameter(name, value)
-            end
+            @pg_settings&.find { |parameter| parameter[:name].downcase == name.downcase }
           end
 
           def load_parameters
