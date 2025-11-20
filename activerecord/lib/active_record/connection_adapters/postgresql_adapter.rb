@@ -1012,10 +1012,6 @@ module ActiveRecord
           # and then never changed.
           return if variables["timezone"]
 
-          set_timezone
-        end
-
-        def set_timezone
           # If using Active Record's time zone support configure the connection
           # to return TIMESTAMP WITH ZONE types in UTC.
           if default_timezone == :utc
