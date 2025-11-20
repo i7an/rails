@@ -22,9 +22,17 @@ module ActiveRecord
             if value == :default
               false # simplification
             else
+              normalized_value = case value
+              when TrueClass
+                "on"
+              when FalseClass
+                "off"
+              else
+                value.to_s
+              end
               current_value = internal_execute("SHOW #{name}", "SCHEMA").getvalue(0, 0)
-              # TODO: normalize depending on the type
-              value == current_value
+
+              normalized_value == current_value
             end
           end
 
