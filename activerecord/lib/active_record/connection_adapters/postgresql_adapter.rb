@@ -981,7 +981,7 @@ module ActiveRecord
           set_standard_conforming_strings
 
           # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
-          set_interval_style
+          ensure_parameter("intervalstyle", "iso_8601")
 
           variables = @config.fetch(:variables, {}).stringify_keys
 
@@ -1042,10 +1042,6 @@ module ActiveRecord
           ensure_parameter("client_encoding", normalized_encoding) do
             @raw_connection.set_client_encoding(normalized_encoding)
           end
-        end
-
-        def set_interval_style
-          ensure_parameter("intervalstyle", "iso_8601")
         end
 
         # Returns the list of a table's column names, data types, and default values.
