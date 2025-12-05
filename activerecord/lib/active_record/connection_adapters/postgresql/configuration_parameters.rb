@@ -3,7 +3,8 @@
 module ActiveRecord
   module ConnectionAdapters
     module PostgreSQL
-      # quote and internal_execute must be implemented
+      # Helper methods for working with configuration parameters.
+      # Uses #internal_execute and #quote.
       module ConfigurationParameters
         private
           def ensure_parameter(name, value)
