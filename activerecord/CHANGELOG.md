@@ -1,3 +1,17 @@
+*   Minimize AWS RDS Proxy connection pinning caused by SET for PostgreSQL.
+
+    When configuring a PostgreSQL connection, the adapter calls `SET` commands
+    to configure timezone, encoding, and other parameters. In AWS RDS Proxy,
+    these `SET` commands cause connection pinning.
+
+    This fix skips `SET` commands when the parameter value is already set to the
+    desired value, minimizing pinning. It's expected that you set these
+    variables in the RDS Proxy initialization query:
+
+    ```SQL
+    SET intervalstyle=iso_8601;
+    ```
+
 ## Rails 8.0.4 (October 28, 2025) ##
 
 *   Fix SQLite3 data loss during table alterations with CASCADE foreign keys.
