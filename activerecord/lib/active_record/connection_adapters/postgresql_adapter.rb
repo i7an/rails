@@ -377,7 +377,7 @@ module ActiveRecord
           unless @raw_connection.transaction_status == ::PG::PQTRANS_IDLE
             @raw_connection.query "ROLLBACK"
           end
-          @raw_connection.query "DISCARD ALL"
+          @raw_connection.query "DISCARD ALL" #
 
           super
         end
@@ -1031,7 +1031,7 @@ module ActiveRecord
           # PostgreSQL accepts loose input forms like 'utf@8'. We assume
           # canonical form for simplicity.
           # See https://github.com/postgres/postgres/blob/master/src/common/encnames.c
-          ensure_parameter("client_encoding", normalized_encoding) do
+          if @raw_connection.get_client_encoding != normalized_encoding
             @raw_connection.set_client_encoding(normalized_encoding)
           end
         end
